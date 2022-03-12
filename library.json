@@ -1,0 +1,38 @@
+{
+    "name": "htcw_waveshare5in65f",
+    "version": "1.0.0",
+    "description": "Provides support for the Waveshare 5.65inch (F) display device w/ GFX",
+    "keywords": ["epaper","eink","e-paper","e-ink","waveshare","graphics","drawing"],
+    "authors": {
+        "name":"honey the codewitch",
+        "homepage": "https://www.codeproject.com/Members/code-witch"
+    },
+    "license": "MIT",
+    "frameworks": ["arduino"],
+    "platforms": "*",
+    "build": {
+        "unflags": "-std=gnu++11",
+        "flags": "-std=gnu++14"
+    },
+    "repository":
+    {
+        "type": "git",
+        "url": "https://github.com/codewitch-honey-crisis/htcw_st7735.git"
+    },
+    "dependencies": {
+        "codewitch-honey-crisis/htcw_gfx": "^1.0.0",
+        "codewitch-honey-crisis/htcw_tft_io": "^1.0.1"
+    },
+    "examples": [
+        {
+            "name": "Demo",
+            "base": "examples/demo",
+            "files": [
+                "platformio.ini",
+                "include/image.h",
+                "include/Maziro.h",
+                "src/main.cpp"
+            ]
+        }
+    ]
+}
