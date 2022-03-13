@@ -312,6 +312,10 @@ namespace arduino {
             }
             return gfx::gfx_result::success;
         }
+        inline gfx::gfx_result clear(const gfx::rect16& bounds) {
+            pixel_type px;
+            return fill(bounds,px);
+        }
         gfx::gfx_result point(gfx::point16 location,pixel_type* out_color) const {
             if(!m_frame_buffer) {
                 return gfx::gfx_result::invalid_state;
