@@ -110,6 +110,7 @@ namespace arduino {
         int m_suspend_count;
         palette_type m_palette;
         bool m_sleep;
+        bool m_dithering;
         waveshare5in65f(const waveshare5in65f& rhs)=delete;
         waveshare5in65f& operator=(const waveshare5in65f& rhs)=delete;
         static int hash_pixel(const typename pixel_type::int_type& px) {
@@ -140,49 +141,70 @@ namespace arduino {
                     }
                 }
             } else {
-                using cache_type = data::simple_fixed_map<typename pixel_type::int_type,gfx::helpers::dither_color::mixing_plan_data_fast,100>;
-                cache_type* cache = (cache_type*)ps_malloc(sizeof(cache_type));
-                if(cache!=nullptr) {
-                    *cache = cache_type(hash_pixel,m_allocator,m_reallocator,m_deallocator);
-                }
-                for(int y=0;y<height;++y) {
-                    for(int x = 0;x<width;x+=2) {
-                        uint8_t b = 0;
-                        for(int xx = x;xx<(x+1);++xx) {
-                            b<<=4;
-                            double map_value = gfx::helpers::dither_color::threshold_map_fast[(xx & 7) + ((y & 7) << 3)];
-                            pixel_type px;
-                            typename palette_type::mapped_pixel_type mpx;
-                            frame_type::point(dimensions(),m_frame_buffer,gfx::point16(xx,y),&px);
-                            if(cache!=nullptr) {
-                                const gfx::helpers::dither_color::mixing_plan_data_fast* pd = cache->find(px.native_value);
-                                if(nullptr!=pd) {
-                                    b|=pd->colors[map_value<pd->ratio?0:1];
-                                } else {
-                                    convert(px,&mpx);
-                                    gfx::helpers::dither_color::mixing_plan_data_fast plan;
-                                    gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
-                                    b|=plan.colors[map_value<plan.ratio?0:1];
-                                    cache->insert({px.native_value,plan});
-                                    
-                                }
-                                continue;
-                            }
-                            convert(px,&mpx);
-                            gfx::helpers::dither_color::mixing_plan_data_fast plan;
-                            gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
-                            b|=plan.colors[map_value<plan.ratio?0:1];
-                            
-
-                        }
-                        bus_driver::send_data8(b);
+                if(m_dithering) {
+                    using cache_type = data::simple_fixed_map<typename pixel_type::int_type,gfx::helpers::dither_color::mixing_plan_data_fast,100>;
+                    cache_type* cache = (cache_type*)ps_malloc(sizeof(cache_type));
+                    if(cache!=nullptr) {
+                        *cache = cache_type(hash_pixel,m_allocator,m_reallocator,m_deallocator);
                     }
+                    for(int y=0;y<height;++y) {
+                        for(int x = 0;x<width;x+=2) {
+                            uint8_t b = 0;
+                            for(int xx = x;xx<(x+1);++xx) {
+                                b<<=4;
+                                double map_value = gfx::helpers::dither_color::threshold_map_fast[(xx & 7) + ((y & 7) << 3)];
+                                pixel_type px;
+                                typename palette_type::mapped_pixel_type mpx;
+                                frame_type::point(dimensions(),m_frame_buffer,gfx::point16(xx,y),&px);
+                                if(cache!=nullptr) {
+                                    const gfx::helpers::dither_color::mixing_plan_data_fast* pd = cache->find(px.native_value);
+                                    if(nullptr!=pd) {
+                                        b|=pd->colors[map_value<pd->ratio?0:1];
+                                    } else {
+                                        convert(px,&mpx);
+                                        gfx::helpers::dither_color::mixing_plan_data_fast plan;
+                                        gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
+                                        b|=plan.colors[map_value<plan.ratio?0:1];
+                                        cache->insert({px.native_value,plan});
+                                        
+                                    }
+                                    continue;
+                                }
+                                convert(px,&mpx);
+                                gfx::helpers::dither_color::mixing_plan_data_fast plan;
+                                gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
+                                b|=plan.colors[map_value<plan.ratio?0:1];
+                                
+
+                            }
+                            bus_driver::send_data8(b);
+                        }
+                    } 
+                    if(cache!=nullptr) {
+                        cache->clear();
+                        cache->~cache_type();
+                        m_deallocator(cache);
+                    }
+                } else {
+                    for(int y=0;y<height;++y) {
+                        for(int x = 0;x<width;x+=2) {
+                            uint8_t b = 0;
+                            for(int xx = x;xx<(x+1);++xx) {
+                                b<<=4;
+                                pixel_type px;
+                                typename palette_type::mapped_pixel_type mpx;
+                                frame_type::point(dimensions(),m_frame_buffer,gfx::point16(xx,y),&px);
+                                gfx::convert(px,&mpx);
+                                typename palette_type::pixel_type ipx;
+                                m_palette.nearest(mpx,&ipx);
+                                b|=ipx.template channel<0>();
+                            }
+                            bus_driver::send_data8(b);
+                        }
+                        
+                    }   
                 }
-                if(cache!=nullptr) {
-                    cache->clear();
-                    cache->~cache_type();
-                    m_deallocator(cache);
-                }
+                
             }
             bus_driver::send_command(0x04);
             busy_high();
@@ -242,6 +264,7 @@ namespace arduino {
             m_frame_buffer = rhs.m_frame_buffer;
             m_suspend_count = rhs.m_suspend_count;
             m_sleep = rhs.m_sleep;
+            m_dithering = rhs.m_dithering;
             rhs.m_deallocator = nullptr;
         }
         waveshare5in65f& operator=(waveshare5in65f&& rhs) {
@@ -252,6 +275,7 @@ namespace arduino {
             m_frame_buffer = rhs.m_frame_buffer;
             m_suspend_count = rhs.m_suspend_count;
             m_sleep = rhs.m_sleep;
+            m_dithering = rhs.m_dithering;
             rhs.m_deallocator = nullptr;
             return *this;
         }
@@ -324,10 +348,17 @@ namespace arduino {
                 m_deallocator(deallocator),
                 m_frame_buffer(nullptr),
                 m_suspend_count(0),
-                m_sleep(false) {
+                m_sleep(false),
+                m_dithering(dithered) {
         }
         ~waveshare5in65f() {
             deinitialize();
+        }
+        inline bool dithering() const {
+            return m_dithering && dithered;
+        }
+        inline void dithering(bool value) {
+            m_dithering = value;
         }
         inline const palette_type* palette() const {return &m_palette;}
         gfx::gfx_result suspend() {

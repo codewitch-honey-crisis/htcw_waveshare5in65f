@@ -31,6 +31,7 @@ void setup() {
 }
 
 void loop() {
+  // epd.dithering(false); // uncomment this to disable dithering for subsequent updates.
   using epd0_color = color<rgb_pixel<16>>;
   // use indexed colors:
   //using epd0ipt = decltype(epd)::pixel_type;
