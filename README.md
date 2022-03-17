@@ -22,6 +22,6 @@ build_flags=-std=gnu++14
             -mfix-esp32-psram-cache-issue
 ```
 
-Note that PSRAM is enabled. This expacts an ESP32 WROVER or modification to use your platform's PSRAM (probably)
+Note that PSRAM is enabled. This expects an ESP32 WROVER or modification to use your platform's PSRAM (probably)
 
-The frame buffer takes a significant amount of space - 132kB
+The frame buffer takes a significant amount of space - at least 132kB, or generally more if you're dithering.
