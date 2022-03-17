@@ -179,6 +179,7 @@ namespace arduino {
                     }
                 }
                 if(cache!=nullptr) {
+                    cache->clear();
                     m_deallocator(cache);
                 }
             }
