@@ -21,8 +21,9 @@ static_assert(false,"PSRAM must be enabled to use this device");
 using namespace arduino;
 using namespace gfx;
 using epd_bus = tft_spi_ex<EPD_HOST,PIN_NUM_CS,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,SPI_MODE0>;
-// ::ps_malloc means use PSRAM for framebuffer - this is required:
-waveshare5in65f<PIN_NUM_DC,PIN_NUM_RST,PIN_NUM_WAIT,epd_bus> epd(::ps_malloc);
+// ::ps_malloc/::ps_realloc means use PSRAM for framebuffer - this is required:
+// 16 means dither from rgb_pixel<16> to the 7-color display
+waveshare5in65f<PIN_NUM_DC,PIN_NUM_RST,PIN_NUM_WAIT,epd_bus,16> epd(::ps_malloc,::ps_realloc);
 
 void setup() {
   Serial.begin(115200);

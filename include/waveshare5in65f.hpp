@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <gfx_bitmap.hpp>
 #include <tft_driver.hpp>
+#include <htcw_data.hpp>
 namespace arduino {
     template<typename PixelType>
     struct waveshare5in65f_palette {
@@ -69,14 +70,23 @@ namespace arduino {
             return gfx::gfx_result::success;
         }
     };
-    
+    namespace waveshare5in65f_helpers {
+        template<size_t DitherBitDepth> struct pixel_type_impl {
+            using type = gfx::rgb_pixel<DitherBitDepth>;
+        };
+        template<> struct pixel_type_impl<0> {
+            using type = gfx::pixel<gfx::channel_traits<gfx::channel_name::index,4,0,6>>;
+        };
+    }
     template<int8_t PinDC, 
             int8_t PinRst, 
             int8_t PinWait, 
-            typename Bus, 
+            typename Bus,
+            size_t DitherBitDepth = 0, 
             unsigned int WriteSpeedPercent = 100,
             unsigned int ReadSpeedPercent = WriteSpeedPercent>
     struct waveshare5in65f final {
+        static_assert(DitherBitDepth==0||DitherBitDepth>=6,"DitherBitDepth must be 0 or at least 6");
         constexpr static const uint16_t width = 600;
         constexpr static const uint16_t height = 448;
         constexpr static const int8_t pin_dc = PinDC;
@@ -84,15 +94,17 @@ namespace arduino {
         constexpr static const int8_t pin_wait = PinWait;
         constexpr static const float write_speed_multiplier = (WriteSpeedPercent/100.0);
         constexpr static const float read_speed_multiplier = (ReadSpeedPercent/100.0);
+        constexpr static const bool dithered = DitherBitDepth != 0;
         using bus = Bus;
         using bus_driver = tft_driver<pin_dc,pin_rst,-1,bus>;
-        using pixel_type = gfx::pixel<gfx::channel_traits<gfx::channel_name::index,4,0,6>>;
+        using pixel_type = typename waveshare5in65f_helpers::template pixel_type_impl<DitherBitDepth>::type;
         using palette_type = waveshare5in65f_palette<gfx::rgb_pixel<16>>;
         using caps = gfx::gfx_caps<false,false,false,false,true,true,false>;
         using frame_type = gfx::bitmap<pixel_type,palette_type>;
         
     private:
         void*(*m_allocator)(size_t);
+        void*(*m_reallocator)(void*,size_t);
         void(*m_deallocator)(void*);
         uint8_t* m_frame_buffer;
         int m_suspend_count;
@@ -100,6 +112,9 @@ namespace arduino {
         bool m_sleep;
         waveshare5in65f(const waveshare5in65f& rhs)=delete;
         waveshare5in65f& operator=(const waveshare5in65f& rhs)=delete;
+        static int hash_pixel(const typename pixel_type::int_type& px) {
+            return (int)px;
+        }
         static void busy_high() { // If BUSYN=0 then waiting 
             while(!(digitalRead(pin_wait)));
         }
@@ -118,9 +133,53 @@ namespace arduino {
             bus_driver::send_data8(0x01);
             bus_driver::send_data8(0xC0);
             bus_driver::send_command(0x10);
-            for(i=0; i<height; i++) {
-                for(j=0; j< width/2; j++) {
-                    bus_driver::send_data8(m_frame_buffer[j + (width/2*i)]);
+            if(!dithered) {
+                for(i=0; i<height; i++) {
+                    for(j=0; j< width/2; j++) {
+                        bus_driver::send_data8(m_frame_buffer[j + (width/2*i)]);
+                    }
+                }
+            } else {
+                using cache_type = data::simple_fixed_map<typename pixel_type::int_type,gfx::helpers::dither_color::mixing_plan_data_fast,100>;
+                cache_type* cache = (cache_type*)ps_malloc(sizeof(cache_type));
+                if(cache!=nullptr) {
+                    *cache = cache_type(hash_pixel,m_allocator,m_reallocator,m_deallocator);
+                }
+                for(int y=0;y<height;++y) {
+                    for(int x = 0;x<width;x+=2) {
+                        uint8_t b = 0;
+                        for(int xx = x;xx<(x+1);++xx) {
+                            b<<=4;
+                            double map_value = gfx::helpers::dither_color::threshold_map_fast[(xx & 7) + ((y & 7) << 3)];
+                            pixel_type px;
+                            typename palette_type::mapped_pixel_type mpx;
+                            frame_type::point(dimensions(),m_frame_buffer,gfx::point16(xx,y),&px);
+                            if(cache!=nullptr) {
+                                const gfx::helpers::dither_color::mixing_plan_data_fast* pd = cache->find(px.native_value);
+                                if(nullptr!=pd) {
+                                    b|=pd->colors[map_value<pd->ratio?0:1];
+                                } else {
+                                    convert(px,&mpx);
+                                    gfx::helpers::dither_color::mixing_plan_data_fast plan;
+                                    gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
+                                    b|=plan.colors[map_value<plan.ratio?0:1];
+                                    cache->insert({px.native_value,plan});
+                                    
+                                }
+                                continue;
+                            }
+                            convert(px,&mpx);
+                            gfx::helpers::dither_color::mixing_plan_data_fast plan;
+                            gfx::helpers::dither_color::mixing_plan_fast(&m_palette,mpx,&plan);
+                            b|=plan.colors[map_value<plan.ratio?0:1];
+                            
+
+                        }
+                        bus_driver::send_data8(b);
+                    }
+                }
+                if(cache!=nullptr) {
+                    m_deallocator(cache);
                 }
             }
             bus_driver::send_command(0x04);
@@ -176,6 +235,7 @@ namespace arduino {
     public:
         waveshare5in65f(waveshare5in65f&& rhs) {
             m_allocator = rhs.m_allocator;
+            m_reallocator = rhs.m_reallocator;
             m_deallocator = rhs.m_deallocator;
             m_frame_buffer = rhs.m_frame_buffer;
             m_suspend_count = rhs.m_suspend_count;
@@ -185,6 +245,7 @@ namespace arduino {
         waveshare5in65f& operator=(waveshare5in65f&& rhs) {
             deinitialize();
             m_allocator = rhs.m_allocator;
+            m_reallocator = rhs.m_reallocator;
             m_deallocator = rhs.m_deallocator;
             m_frame_buffer = rhs.m_frame_buffer;
             m_suspend_count = rhs.m_suspend_count;
@@ -255,8 +316,9 @@ namespace arduino {
             digitalWrite(pin_rst, HIGH);
             delay(200);
         }
-        waveshare5in65f(void*(allocator)(size_t)=::malloc,void(deallocator)(void*)=::free) :
+        waveshare5in65f(void*(allocator)(size_t)=::malloc,void*(reallocator)(void*,size_t)=::realloc,void(deallocator)(void*)=::free) :
                 m_allocator(allocator),
+                m_reallocator(reallocator),
                 m_deallocator(deallocator),
                 m_frame_buffer(nullptr),
                 m_suspend_count(0),
