@@ -180,6 +180,7 @@ namespace arduino {
                 }
                 if(cache!=nullptr) {
                     cache->clear();
+                    cache->~cache_type();
                     m_deallocator(cache);
                 }
             }
