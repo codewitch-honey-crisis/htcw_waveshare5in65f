@@ -21,7 +21,7 @@
     },
     "dependencies": {
         "codewitch-honey-crisis/htcw_gfx": "^1.0.2",
-        "codewitch-honey-crisis/htcw_tft_io": "^1.0.1",
+        "codewitch-honey-crisis/htcw_tft_io": "^1.0.1"
     },
     "examples": [
         {
