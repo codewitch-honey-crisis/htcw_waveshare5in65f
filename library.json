@@ -1,6 +1,6 @@
 {
     "name": "htcw_waveshare5in65f",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "description": "Provides support for the Waveshare 5.65inch (F) display device w/ GFX",
     "keywords": ["epaper","eink","e-paper","e-ink","waveshare","graphics","drawing"],
     "authors": {
@@ -20,7 +20,7 @@
         "url": "https://github.com/codewitch-honey-crisis/htcw_waveshare5in65f.git"
     },
     "dependencies": {
-        "codewitch-honey-crisis/htcw_gfx": "^1.1.1",
+        "codewitch-honey-crisis/htcw_gfx": "^1.1.2",
         "codewitch-honey-crisis/htcw_tft_io": "^1.0.2"
     },
     "examples": [
